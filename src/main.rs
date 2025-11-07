@@ -1,6 +1,7 @@
 use std::env;
 
 use anyhow::Context;
+use prettytable::{Table, row};
 use rkv::{StoreOptions, Value};
 use serde::Deserialize;
 
@@ -153,9 +154,16 @@ fn dump_enrollments(store: &SingleStore, reader: &Reader) -> anyhow::Result<()> 
         println!("No enrollments");
     } else {
         println!("Enrollments:");
+
+        let mut table = Table::new();
+        table.set_format(*prettytable::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+        table.set_titles(row!["Slug", "Enrollment Status"]);
+
         for Enrollment { slug, status } in &enrollments {
-            println!("  {slug:64} {status:?}");
+            table.add_row(row![slug, format!("{:?}", status),]);
         }
+
+        table.printstd();
     }
     println!();
 
@@ -187,9 +195,26 @@ fn dump_experiments(store: &SingleStore, reader: &Reader) -> anyhow::Result<()> 
         println!("No experiments");
     } else {
         println!("Experiments:");
-        for experiment in &experiments {
-            println!("  {:?}", experiment);
+
+        let mut table = Table::new();
+        table.set_format(*prettytable::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+
+        table.set_titles(row!["Slug", "R/E", "Paused?", "Feature IDs"]);
+
+        for experiment in experiments {
+            table.add_row(row![
+                experiment.slug,
+                if experiment.is_rollout { "R" } else { "E" },
+                if experiment.is_enrollment_paused {
+                    "Y"
+                } else {
+                    " "
+                },
+                experiment.feature_ids.join(","),
+            ]);
         }
+
+        table.printstd();
     }
     println!();
 
