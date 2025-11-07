@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::env;
 
 use anyhow::Context;
+use chrono::{DateTime, Utc};
 use prettytable::{Table, row};
 use rkv::{StoreOptions, Value};
 use serde::Deserialize;
@@ -56,6 +58,7 @@ fn main() -> anyhow::Result<()> {
     with_single(&rkv, "enrollments", dump_enrollments)?;
     with_single(&rkv, "experiments", dump_experiments)?;
     with_single(&rkv, "updates", dump_updates)?;
+    with_single(&rkv, "event_counts", dump_event_counts)?;
 
     Ok(())
 }
@@ -237,6 +240,81 @@ fn dump_updates(store: &SingleStore, reader: &Reader) -> anyhow::Result<()> {
         println!("Experiments:");
         for experiment in &experiments {
             println!("  {:?}", experiment);
+        }
+    }
+    println!();
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
+pub enum Interval {
+    Minutes,
+    Hours,
+    Days,
+    Weeks,
+    Months,
+    Years,
+}
+
+#[derive(Debug, Deserialize)]
+struct EventCounts {
+    intervals: HashMap<Interval, SingleIntervalCounter>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SingleIntervalCounter {
+    pub data: IntervalData,
+    pub config: IntervalConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IntervalData {
+    buckets: Vec<u64>,
+    bucket_count: usize,
+    starting_instant: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IntervalConfig {
+    bucket_count: usize,
+    interval: Interval,
+}
+
+fn dump_event_counts(store: &SingleStore, reader: &Reader) -> anyhow::Result<()> {
+    let event_counts: Vec<(&str, EventCounts)> = store
+        .iter_start(reader)?
+        .into_iter()
+        .map(|entry| {
+            let (key, value) = entry.context("failed to iterate event counts table")?;
+
+            let key = std::str::from_utf8(key)?;
+            let value = value
+                .as_json::<serde_json::Value>()?
+                .as_array()
+                .ok_or(anyhow::anyhow!(
+                    "Could not parse event counts: expected array"
+                ))
+                .and_then(|xs| {
+                    if xs.len() != 2 {
+                        anyhow::bail!("Could not parse event counts: expected 2-tuple");
+                    }
+
+                    serde_json::from_value::<EventCounts>(xs[1].clone())
+                        .context("Could not parse event counts from xs[1]")
+                        .map_err(Into::into)
+                })?;
+
+            Ok((key, value))
+        })
+        .collect::<anyhow::Result<_>>()?;
+
+    if event_counts.is_empty() {
+        println!("No Events");
+    } else {
+        println!("Events:");
+        for entry in &event_counts {
+            println!("  {:#?}", entry);
         }
     }
     println!();
