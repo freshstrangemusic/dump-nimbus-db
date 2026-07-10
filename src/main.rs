@@ -114,13 +114,48 @@ fn dump_meta(store: &SingleStore, reader: &Reader) -> anyhow::Result<()> {
 }
 
 #[derive(Debug, Deserialize)]
+pub enum PrefBranch {
+    Default,
+    User,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum NotEnrolledReason {
+    DifferentAppName,
+    DifferentChannel,
+    EnrollmentsPaused,
+    FeatureConflict { conflict_slug: Option<String> },
+    NotSelected,
+    NotTargeted,
+    ExperimentsOptOut,
+    RolloutsOptOut,
+    FirefoxLabs,
+    OptOut,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OriginalGeckoPref {
+    pub pref: String,
+    pub branch: PrefBranch,
+    pub value: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PreviousGeckoPrefState {
+    pub original_value: OriginalGeckoPref,
+    pub feature_id: String,
+    pub variable: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub enum EnrollmentStatus {
     Enrolled {
         reason: String,
         branch: String,
+        prev_gecko_pref_states: Option<Vec<PreviousGeckoPrefState>>,
     },
     NotEnrolled {
-        reason: String,
+        reason: NotEnrolledReason,
     },
     Disqualified {
         reason: String,
